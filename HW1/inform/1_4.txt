@@ -1,0 +1,14 @@
+=== nodes=1, procs=4, ppn=4 ===
+
+=== Aggregated Metrics (seconds) ===
+Preprocessing time  (mean) : 0.182244
+Preprocessing time  (max)  : 0.190307
+Input time   (mean over ranks)  : 2.063088
+Output time  (mean over ranks)  : 1.599396
+Computation  (mean/max/min)    : 18.912615 / 42.617513 / 10.369906
+Communication (mean over ranks) : 24.633989
+Total job wall-time            : 47.404878
+Odd-even sort wall-time        : 43.476078  (read_close→write_start)
+Odd-even sort mean COMM time   : 24.633989  (inside sort window)
+
+Saved per-rank breakdown to: nsys_phase_by_rank.csv
