@@ -2,13 +2,16 @@ name: MD to PDF (to pdf branch)
 
 on:
   push:
-    # 避免 pdf 分支的 commit 觸發自己
     branches-ignore:
       - pdf
     paths:
       - '**/*.md'
       - '.github/workflows/md-to-pdf.yml'
   workflow_dispatch:
+
+# 關鍵：給 GITHUB_TOKEN 寫入 repo 的權限
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -18,13 +21,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false  # 避免覆蓋 peaceiris 使用的 token
 
       - name: Install TeX, Pandoc, Fonts
         run: |
           sudo apt-get update
           sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended \
               texlive-latex-recommended texlive-latex-extra fonts-noto-cjk
-          fc-list :lang=zh | head || true
 
       - name: Build PDFs (mirror folders)
         shell: bash
@@ -34,10 +37,7 @@ jobs:
           rm -rf build
           mkdir -p build
           for f in **/*.md; do
-            # 過濾不需要轉的路徑
-            case "$f" in
-              .github/*|build/*) continue ;;
-            esac
+            case "$f" in .github/*|build/*) continue ;; esac
             dir="$(dirname "$f")"
             base="$(basename "$f" .md)"
             outdir="build/${dir}"
