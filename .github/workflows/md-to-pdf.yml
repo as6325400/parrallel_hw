@@ -1,4 +1,4 @@
-name: MD to PDF (to pdf branch)
+name: MD to PDF (md-to-pdf changed-only)
 
 on:
   push:
@@ -9,7 +9,6 @@ on:
       - '.github/workflows/md-to-pdf.yml'
   workflow_dispatch:
 
-# 關鍵：給 GITHUB_TOKEN 寫入 repo 的權限
 permissions:
   contents: write
 
@@ -17,42 +16,58 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: false  # 避免覆蓋 peaceiris 使用的 token
+          persist-credentials: false
 
-      - name: Install TeX, Pandoc, Fonts
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended \
-              texlive-latex-recommended texlive-latex-extra fonts-noto-cjk
-
-      - name: Build PDFs (mirror folders)
+      - name: Detect changed Markdown files
+        id: files
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s globstar nullglob
-          rm -rf build
+          BEFORE="${{ github.event.before || '' }}"
+          if [ -z "$BEFORE" ]; then BEFORE="$(git rev-parse HEAD~1 || echo '')"; fi
+          if [ -n "$BEFORE" ]; then
+            CHANGED=$(git diff --name-only "$BEFORE" "$GITHUB_SHA" -- '**/*.md' ':!.github/**' ':!build/**' || true)
+          else
+            CHANGED=$(git ls-files '**/*.md' ':!.github/**' ':!build/**' || true)
+          fi
+          echo "changed<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGED" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGED"
+
+      - name: Skip if no changes
+        if: steps.files.outputs.changed == ''
+        run: |
+          echo "No changed .md files; skipping."
+          exit 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install md-to-pdf (and optional mermaid)
+        run: |
+          npm i -g md-to-pdf @mermaid-js/mermaid-cli
+
+      - name: Build PDFs (changed only)
+        shell: bash
+        run: |
+          set -euo pipefail
           mkdir -p build
-          for f in **/*.md; do
-            case "$f" in .github/*|build/*) continue ;; esac
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
             dir="$(dirname "$f")"
             base="$(basename "$f" .md)"
             outdir="build/${dir}"
             mkdir -p "$outdir"
             echo "Converting: $f -> ${outdir}/${base}.pdf"
-            pandoc "$f" \
-              --from gfm+yaml_metadata_block \
-              --pdf-engine=xelatex \
-              -V mainfont="Noto Serif CJK TC" \
-              -V monofont="Noto Sans Mono CJK TC" \
-              -V geometry:margin=1in \
-              -V colorlinks=true \
-              --toc \
-              -o "${outdir}/${base}.pdf"
-          done
+            # 直接渲染；如需 KaTeX/MathJax，可加 --body-template 引入 CDN
+            md-to-pdf "$f" --output "${outdir}/${base}.pdf"
+          done <<< "${{ steps.files.outputs.changed }}"
 
       - name: Publish PDFs to pdf branch
         uses: peaceiris/actions-gh-pages@v3
