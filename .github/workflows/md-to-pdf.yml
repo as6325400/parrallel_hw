@@ -1,0 +1,63 @@
+name: MD to PDF (to pdf branch)
+
+on:
+  push:
+    # 避免 pdf 分支的 commit 觸發自己
+    branches-ignore:
+      - pdf
+    paths:
+      - '**/*.md'
+      - '.github/workflows/md-to-pdf.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install TeX, Pandoc, Fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended \
+              texlive-latex-recommended texlive-latex-extra fonts-noto-cjk
+          fc-list :lang=zh | head || true
+
+      - name: Build PDFs (mirror folders)
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          rm -rf build
+          mkdir -p build
+          for f in **/*.md; do
+            # 過濾不需要轉的路徑
+            case "$f" in
+              .github/*|build/*) continue ;;
+            esac
+            dir="$(dirname "$f")"
+            base="$(basename "$f" .md)"
+            outdir="build/${dir}"
+            mkdir -p "$outdir"
+            echo "Converting: $f -> ${outdir}/${base}.pdf"
+            pandoc "$f" \
+              --from gfm+yaml_metadata_block \
+              --pdf-engine=xelatex \
+              -V mainfont="Noto Serif CJK TC" \
+              -V monofont="Noto Sans Mono CJK TC" \
+              -V geometry:margin=1in \
+              -V colorlinks=true \
+              --toc \
+              -o "${outdir}/${base}.pdf"
+          done
+
+      - name: Publish PDFs to pdf branch
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: build
+          publish_branch: pdf
+          force_orphan: true
